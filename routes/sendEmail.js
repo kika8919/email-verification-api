@@ -28,8 +28,8 @@ const sendEmail = (subject, body, to) => {
     // Simulate an asynchronous operation
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
-        console.log("Err:", error.message);
-        resolve([err, null]);
+        console.log("Err: ", to, error.message);
+        resolve([error, null]);
       } else {
         resolve([null, info]);
       }
