@@ -2,7 +2,7 @@
   "name": "email-verification",
   "version": "1.0.0",
   "description": "backend api for lucid growth email verification",
-  "main": "src/app/index.js",
+  "main": "src/api/index.js",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
