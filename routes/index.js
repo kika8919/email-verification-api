@@ -5,44 +5,28 @@ const { sendEmail } = require("./sendEmail");
 
 router.post("/verify-email", async (req, res, next) => {
   let emails = req.body.emails;
-  // emails = [
-  //   // "valid@email.com",
-  //   // "example@email.org",
-  //   // "random.email@12345",
-  //   // "invalid_email@.com",
-  //   // "name@gmail.com",
-  //   // "john.doe@catchall.com",
-  //   // "no_at_symbol.com",
-  //   // "email@valid.com",
-  //   // "random.email123@invalid.",
-  //   // "test@example.net",
-  //   // "user@catchall.org",
-  //   // "invalid_email@.org",
-  //   // "12345@email.com",
-  //   // "catchall@randommail.xyz",
-  //   // "name@email.co.uk",
-  //   // "example@email",
-  //   // "invalid@.net",
-  //   // "valid.email@emailprovider.com",
-  //   // "user@catchallmail.com",
-  //   // "random@12345.email",
-  // ];
 
   applyPromiseToAllEmails(emails)
     .then((resultMap) => {
-      console.log(JSON.stringify(resultMap));
+      // console.log(JSON.stringify(resultMap));
       return res.json({
         emails: emails.map((email) => {
           let smtpResponse;
+          let errResponse;
+          let isValid = true;
           // checking for error in the response
           if (!resultMap[email][0]) {
             smtpResponse = resultMap[email][1].response;
+          } else {
+            errResponse = resultMap[email][0];
+            // custom response from sendMailUsingNodemailer
+            if (errResponse === "Invalid Email") isValid = false;
           }
           return {
             email,
-            isValid: isValidEmail(email),
+            isValid,
             isCatchAllEmail: isCatchAllEmail(email),
-            smtpResponse: smtpResponse,
+            response: smtpResponse || errResponse,
           };
         }),
       });
@@ -57,6 +41,9 @@ router.post("/verify-email", async (req, res, next) => {
 });
 
 const sendMailUsingNodemailer = async (DESTINATION_EMAIL) => {
+  if (!isValidEmail(DESTINATION_EMAIL)) {
+    return ["Invalid Email", null];
+  }
   // Simulating catch-all implementation
   const incomingEmail = {
     subject: "Test Email from Catch-All System",
@@ -88,42 +75,9 @@ const isCatchAllEmail = (email) => {
 };
 
 const isValidEmail = (email) => {
-  // Split the email address into local part and domain
-  const parts = email.split("@");
-
-  if (parts.length !== 2) {
-    return false; // Email should have exactly one "@" symbol
-  }
-
-  const localPart = parts[0];
-  const domain = parts[1];
-
-  // Check if the local part is not empty and does not start or end with a dot
-  if (
-    localPart === "" ||
-    localPart[0] === "." ||
-    localPart[localPart.length - 1] === "."
-  ) {
-    return false;
-  }
-
-  // Check if the domain is not empty and does not start or end with a dot
-  if (domain === "" || domain[0] === "." || domain[domain.length - 1] === ".") {
-    return false;
-  }
-
-  // Check if the domain has at least one dot (.) in it
-  if (domain.indexOf(".") === -1) {
-    return false;
-  }
-
-  // Check if the local part and domain do not contain invalid characters
-  const invalidCharacters = /[()<>[\]:;@\\,"]/;
-  if (invalidCharacters.test(localPart) || invalidCharacters.test(domain)) {
-    return false;
-  }
-
-  return true;
+  const emailRegex =
+    /^([\w-]+(?:\.[\w-]+)*)@((?:[\w-]+\.)*\w[\w-]{0,66})\.([a-z]{2,6}(?:\.[a-z]{2})?)$/;
+  return emailRegex.test(email);
 };
 
 router.get("/health", (req, res, next) => {
