@@ -2,10 +2,10 @@
   "name": "email-verification",
   "version": "1.0.0",
   "description": "backend api for lucid growth email verification",
-  "main": "src/api/index.js",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node app.js",
+    "dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "vercel-build": "echo hello"
   },
