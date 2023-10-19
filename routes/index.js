@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const { sendEmail } = require("./sendEmail");
+const { verifyEmail } = require("./verifyEmail");
 
 router.post("/verify-email", async (req, res, next) => {
   let emails = req.body.emails;
@@ -11,22 +12,23 @@ router.post("/verify-email", async (req, res, next) => {
       // console.log(JSON.stringify(resultMap));
       return res.json({
         emails: emails.map((email) => {
-          let smtpResponse;
+          let banner;
           let errResponse;
           let isValid = true;
           // checking for error in the response
           if (!resultMap[email][0]) {
-            smtpResponse = resultMap[email][1].response;
+            banner = objectToStringWithLabels(resultMap[email][1]);
           } else {
             errResponse = resultMap[email][0];
             // custom response from sendMailUsingNodemailer
-            if (errResponse === "Invalid Email") isValid = false;
+            if (errResponse === "Invalid Email(from regex)") isValid = false;
+            else errResponse = objectToStringWithLabels(resultMap[email][0]);
           }
           return {
             email,
             isValid,
             isCatchAllEmail: isCatchAllEmail(email),
-            response: smtpResponse || errResponse,
+            response: banner || errResponse,
           };
         }),
       });
@@ -40,31 +42,34 @@ router.post("/verify-email", async (req, res, next) => {
     });
 });
 
-const sendMailUsingNodemailer = async (DESTINATION_EMAIL) => {
-  if (!isValidEmail(DESTINATION_EMAIL)) {
-    return ["Invalid Email", null];
-  }
-  // Simulating catch-all implementation
-  const incomingEmail = {
-    subject: "Test Email from Catch-All System",
-    body: "This is a test email from the catch-all system.",
-    // sender: "sender@example.com", // Replace with actual sender's email
-  };
+const objectToStringWithLabels = (obj) => {
+  let result = [];
 
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result.push(`${key}: ${obj[key]}`);
+    }
+  }
+
+  return result;
+};
+
+const verifyEmailUsingEmailVerify = (email) => {
   return new Promise((resolve) => {
-    resolve(
-      sendEmail(incomingEmail.subject, incomingEmail.body, DESTINATION_EMAIL)
-    );
+    if (!isValidEmail(email)) {
+      resolve(["Invalid Email(from regex)", null]);
+    } else {
+      resolve(verifyEmail(email));
+    }
   });
 };
 
-const applyPromiseToAllEmails = async (arr) => {
-  const promises = arr.map((element) => sendMailUsingNodemailer(element));
+const applyPromiseToAllEmails = async (emails) => {
+  const promises = emails.map((email) => verifyEmailUsingEmailVerify(email));
   return Promise.all(promises).then((results) => {
-    // Map the results back to the original elements
     const resultMap = {};
-    for (let i = 0; i < arr.length; i++) {
-      resultMap[arr[i]] = results[i];
+    for (let i = 0; i < emails.length; i++) {
+      resultMap[emails[i]] = results[i];
     }
     return resultMap;
   });
@@ -93,4 +98,3 @@ router.get("/health", (req, res, next) => {
 });
 
 module.exports = router;
-// message: 2.1.5 OK u21-20020a05622a011500b00419630a935esi3113757qtw.237 - gsmtp,
