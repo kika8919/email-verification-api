@@ -6,7 +6,7 @@ const EMAIL_USER = "kavyagg199@gmail.com";
 const EMAIL_PASS = "mccdxfkhjotiatif";
 
 // Function to send an email
-const sendEmail = (subject, body, to) => {
+const sendEmail = (subject, body, to, isCatchAll) => {
   return new Promise((resolve, reject) => {
     const transporter = nodemailer.createTransport({
       host: SMTP_SERVER,
@@ -31,6 +31,7 @@ const sendEmail = (subject, body, to) => {
         console.log("Err: ", to, error.message);
         resolve([error, null]);
       } else {
+        info.isCatchAll = isCatchAll;
         resolve([null, info]);
       }
     });
