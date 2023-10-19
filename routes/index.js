@@ -2,37 +2,39 @@
 const express = require("express");
 const router = express.Router();
 const { sendEmail } = require("./sendEmail");
+const dns = require("dns");
 
 router.post("/verify-email", async (req, res, next) => {
   let emails = req.body.emails;
-
   applyPromiseToAllEmails(emails)
     .then((resultMap) => {
-      // console.log(JSON.stringify(resultMap));
       return res.json({
         emails: emails.map((email) => {
-          let smtpResponse;
+          let banner;
           let errResponse;
           let isValid = true;
+          let isCatchAll = "not known";
           // checking for error in the response
           if (!resultMap[email][0]) {
-            smtpResponse = resultMap[email][1].response;
+            banner = objectToStringWithLabels(resultMap[email][1]);
+            isCatchAll = resultMap[email][1].isCatchAll;
           } else {
             errResponse = resultMap[email][0];
             // custom response from sendMailUsingNodemailer
-            if (errResponse === "Invalid Email") isValid = false;
+            if (errResponse === "Invalid Email(from regex)") isValid = false;
+            else errResponse = objectToStringWithLabels(resultMap[email][0]);
           }
           return {
             email,
             isValid,
-            isCatchAllEmail: isCatchAllEmail(email),
-            response: smtpResponse || errResponse,
+            isCatchAllEmail: isCatchAll,
+            response: banner || errResponse,
           };
         }),
       });
     })
     .catch((error) => {
-      console.log("error");
+      console.log("error in catch", error);
       res.json({
         error,
         emails: [],
@@ -40,38 +42,75 @@ router.post("/verify-email", async (req, res, next) => {
     });
 });
 
-const sendMailUsingNodemailer = async (DESTINATION_EMAIL) => {
-  if (!isValidEmail(DESTINATION_EMAIL)) {
-    return ["Invalid Email", null];
+const objectToStringWithLabels = (obj) => {
+  let result = [];
+
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result.push(`${key}: ${obj[key]}`);
+    }
   }
-  // Simulating catch-all implementation
+
+  return result;
+};
+
+const sendMailUsingNodemailer = async (DESTINATION_EMAIL) => {
   const incomingEmail = {
-    subject: "Test Email from Catch-All System",
-    body: "This is a test email from the catch-all system.",
-    // sender: "sender@example.com", // Replace with actual sender's email
+    subject: "Test Email from Email Verification System",
+    body: "This is a test email.",
   };
 
   return new Promise((resolve) => {
-    resolve(
-      sendEmail(incomingEmail.subject, incomingEmail.body, DESTINATION_EMAIL)
-    );
+    if (!isValidEmail(DESTINATION_EMAIL)) {
+      resolve(["Invalid Email(from regex)", null]);
+    } else {
+      const domain = DESTINATION_EMAIL.split("@")[1];
+      checkDNSMXServer(domain).then((dnsMXLookUpResponse) => {
+        if (dnsMXLookUpResponse.error) {
+          resolve([dnsMXLookUpResponse.err, null]);
+        } else {
+          resolve(
+            sendEmail(
+              incomingEmail.subject,
+              incomingEmail.body,
+              DESTINATION_EMAIL,
+              dnsMXLookUpResponse.isCatchAll
+            )
+          );
+        }
+      });
+    }
   });
 };
 
-const applyPromiseToAllEmails = async (arr) => {
-  const promises = arr.map((element) => sendMailUsingNodemailer(element));
+const checkDNSMXServer = async (domain) => {
+  return new Promise((resolve, reject) => {
+    dns.resolveMx(domain, (err, mxRecords) => {
+      if (err) {
+        console.error("DNS lookup error:", err);
+        resolve({ error: "DNS lookup error", err });
+      }
+
+      if (mxRecords && mxRecords.length > 0) {
+        const isCatchAll = false;
+        resolve({ isCatchAll });
+      } else {
+        const isCatchAll = true;
+        resolve({ isCatchAll });
+      }
+    });
+  });
+};
+
+const applyPromiseToAllEmails = async (emails) => {
+  const promises = emails.map((email) => sendMailUsingNodemailer(email));
   return Promise.all(promises).then((results) => {
-    // Map the results back to the original elements
     const resultMap = {};
-    for (let i = 0; i < arr.length; i++) {
-      resultMap[arr[i]] = results[i];
+    for (let i = 0; i < emails.length; i++) {
+      resultMap[emails[i]] = results[i];
     }
     return resultMap;
   });
-};
-
-const isCatchAllEmail = (email) => {
-  return false;
 };
 
 const isValidEmail = (email) => {
@@ -93,4 +132,3 @@ router.get("/health", (req, res, next) => {
 });
 
 module.exports = router;
-// message: 2.1.5 OK u21-20020a05622a011500b00419630a935esi3113757qtw.237 - gsmtp,
