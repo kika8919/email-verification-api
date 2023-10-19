@@ -2,22 +2,22 @@
 const express = require("express");
 const router = express.Router();
 const { sendEmail } = require("./sendEmail");
-const { verifyEmail } = require("./verifyEmail");
+const dns = require("dns");
 
 router.post("/verify-email", async (req, res, next) => {
   let emails = req.body.emails;
-
   applyPromiseToAllEmails(emails)
     .then((resultMap) => {
-      // console.log(JSON.stringify(resultMap));
       return res.json({
         emails: emails.map((email) => {
           let banner;
           let errResponse;
           let isValid = true;
+          let isCatchAll = "not known";
           // checking for error in the response
           if (!resultMap[email][0]) {
             banner = objectToStringWithLabels(resultMap[email][1]);
+            isCatchAll = resultMap[email][1].isCatchAll;
           } else {
             errResponse = resultMap[email][0];
             // custom response from sendMailUsingNodemailer
@@ -27,14 +27,14 @@ router.post("/verify-email", async (req, res, next) => {
           return {
             email,
             isValid,
-            isCatchAllEmail: isCatchAllEmail(email),
+            isCatchAllEmail: isCatchAll,
             response: banner || errResponse,
           };
         }),
       });
     })
     .catch((error) => {
-      console.log("error");
+      console.log("error in catch", error);
       res.json({
         error,
         emails: [],
@@ -54,18 +54,56 @@ const objectToStringWithLabels = (obj) => {
   return result;
 };
 
-const verifyEmailUsingEmailVerify = (email) => {
+const sendMailUsingNodemailer = async (DESTINATION_EMAIL) => {
+  const incomingEmail = {
+    subject: "Test Email from Email Verification System",
+    body: "This is a test email.",
+  };
+
   return new Promise((resolve) => {
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(DESTINATION_EMAIL)) {
       resolve(["Invalid Email(from regex)", null]);
     } else {
-      resolve(verifyEmail(email));
+      const domain = DESTINATION_EMAIL.split("@")[1];
+      checkDNSMXServer(domain).then((dnsMXLookUpResponse) => {
+        if (dnsMXLookUpResponse.error) {
+          resolve([dnsMXLookUpResponse.err, null]);
+        } else {
+          resolve(
+            sendEmail(
+              incomingEmail.subject,
+              incomingEmail.body,
+              DESTINATION_EMAIL,
+              dnsMXLookUpResponse.isCatchAll
+            )
+          );
+        }
+      });
     }
   });
 };
 
+const checkDNSMXServer = async (domain) => {
+  return new Promise((resolve, reject) => {
+    dns.resolveMx(domain, (err, mxRecords) => {
+      if (err) {
+        console.error("DNS lookup error:", err);
+        resolve({ error: "DNS lookup error", err });
+      }
+
+      if (mxRecords && mxRecords.length > 0) {
+        const isCatchAll = false;
+        resolve({ isCatchAll });
+      } else {
+        const isCatchAll = true;
+        resolve({ isCatchAll });
+      }
+    });
+  });
+};
+
 const applyPromiseToAllEmails = async (emails) => {
-  const promises = emails.map((email) => verifyEmailUsingEmailVerify(email));
+  const promises = emails.map((email) => sendMailUsingNodemailer(email));
   return Promise.all(promises).then((results) => {
     const resultMap = {};
     for (let i = 0; i < emails.length; i++) {
@@ -73,10 +111,6 @@ const applyPromiseToAllEmails = async (emails) => {
     }
     return resultMap;
   });
-};
-
-const isCatchAllEmail = (email) => {
-  return false;
 };
 
 const isValidEmail = (email) => {
